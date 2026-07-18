@@ -23,9 +23,8 @@ GRID_COLS, GRID_ROWS = 8, 8
 CELL = 48                        # pixels per grid cell
 GRID_PIXEL = CELL * GRID_COLS    # 384 px
 PREVIEW_SIZE = 160               # target preview box
-
 TARGET_X = (SCREEN_W - GRID_PIXEL) // 2
-TARGET_Y = 60
+TARGET_Y = 120
 PLAY_X   = TARGET_X
 PLAY_Y   = TARGET_Y + PREVIEW_SIZE + 40
 
@@ -269,7 +268,8 @@ def grids_match(a, b):
 # ── Tray layout ───────────────────────────────────────────────────────────────
 TRAY_Y = PLAY_Y + GRID_PIXEL + 20
 
-def tray_positions(pieces: List[Piece], cell: int, top_y: int):
+def tray_positions(pieces: List[Piece], cell: int, top_y: int,
+                   left_bound: int = 0, right_bound: int = SCREEN_W):
     """Lay out tray pieces in centred rows with spacing based on piece size."""
     if not pieces:
         return []
@@ -277,7 +277,8 @@ def tray_positions(pieces: List[Piece], cell: int, top_y: int):
     horizontal_gap = 24
     vertical_gap = 28
     side_margin = 36
-    max_row_width = SCREEN_W - side_margin * 2
+    available_width = right_bound - left_bound
+    max_row_width = max(120, available_width - side_margin * 2)
 
     rows = []
     current_row = []
@@ -306,7 +307,7 @@ def tray_positions(pieces: List[Piece], cell: int, top_y: int):
     for row in rows:
         row_width = sum(piece_w for _, piece_w, _ in row) + horizontal_gap * max(0, len(row) - 1)
         row_height = max(piece_h for _, _, piece_h in row)
-        x = (SCREEN_W - row_width) // 2
+        x = left_bound + (available_width - row_width) // 2
 
         for index, piece_w, piece_h in row:
             positions[index] = (x + piece_w // 2, y + row_height // 2)
@@ -435,7 +436,9 @@ class Game:
         self.font_num = pygame.font.SysFont("Courier New", 24, bold=True)
 
         self.current_level = 1
+        self.level_scroll = 0
         self.show_solution = False
+        self.show_level_menu = False
         self.solved = False
         self.elapsed = 0.0
         self.moves = 0
@@ -444,11 +447,15 @@ class Game:
 
         # Buttons
         bw, bh = 110, 34
-        self.btn_prev    = Button((20, 20, bw, bh), "◀ PREV",   self.font_sm, BLACK)
-        self.btn_next    = Button((SCREEN_W-130, 20, bw, bh), "NEXT ▶", self.font_sm, BLACK)
+        top_btn_y = 20
+        top_btn_gap = 18
+        group_w = bw * 3 + top_btn_gap * 2
+        group_x = (SCREEN_W - group_w) // 2
+        self.btn_prev    = Button((group_x, top_btn_y, bw, bh), "◀ PREV",   self.font_sm, BLACK)
+        self.btn_next    = Button((group_x + (bw + top_btn_gap) * 2, top_btn_y, bw, bh), "NEXT ▶", self.font_sm, BLACK)
         self.btn_reset   = Button((20, self.screen_h-60, bw, bh), "↺ RESET",  self.font_sm, (80, 80, 80))
         self.btn_hint    = Button((SCREEN_W-130, self.screen_h-60, bw, bh), "💡 HINT", self.font_sm, (60, 130, 60))
-        self.btn_level   = None   # slider-ish, handled separately
+        self.btn_level   = Button((group_x + bw + top_btn_gap, top_btn_y, bw, bh), "LEVELS", self.font_sm, (70, 70, 70))
 
         self.dragging_piece: Optional[int] = None  # index into self.pieces
         self.drag_offset = (0, 0)
@@ -456,6 +463,43 @@ class Game:
     def update_bottom_ui(self):
         self.btn_reset.rect.topleft = (20, self.screen_h - 60)
         self.btn_hint.rect.topleft = (SCREEN_W - 130, self.screen_h - 60)
+
+    def content_center_x(self):
+        return SCREEN_W // 2
+
+    def level_menu_rect(self):
+        return pygame.Rect(120, 90, SCREEN_W - 240, min(500, self.screen_h - 160))
+
+    def sidebar_rect(self):
+        return pygame.Rect(-220, 0, 0, 0)
+
+    def visible_level_count(self):
+        return 0
+
+    def level_menu_item_rect(self, level: int):
+        panel = self.level_menu_rect()
+        cols = 10
+        rows = 11
+        top_pad = 58
+        side_pad = 18
+        bottom_pad = 18
+        row_gap = 10
+        col_gap = 10
+        cell_w = (panel.width - side_pad * 2 - col_gap * (cols - 1)) // cols
+        cell_h = (panel.height - top_pad - bottom_pad - row_gap * (rows - 1)) // rows
+        col = level % cols
+        row = level // cols
+        x = panel.x + side_pad + col * (cell_w + col_gap)
+        y = panel.y + top_pad + row * (cell_h + row_gap)
+        return pygame.Rect(x, y, cell_w, cell_h)
+
+    def level_at_menu_pos(self, pos):
+        if not self.level_menu_rect().collidepoint(pos):
+            return None
+        for level in range(101):
+            if self.level_menu_item_rect(level).collidepoint(pos):
+                return level
+        return None
 
     # ── Level management ──────────────────────────────────────────────────────
     def load_level(self, level: int):
@@ -479,16 +523,19 @@ class Game:
 
         # Grid origin (centred)
         gs = self.grid_size
-        self.ox = (SCREEN_W - gs * CELL) // 2
+        content_center = self.content_center_x()
+        self.ox = content_center - (gs * CELL) // 2
         self.oy = TARGET_Y + PREVIEW_SIZE + 50
 
         # Preview origin
-        self.prev_ox = (SCREEN_W - PREVIEW_SIZE) // 2
+        self.prev_ox = content_center - PREVIEW_SIZE // 2
         self.prev_oy = TARGET_Y
 
         # Arrange pieces in a tidy tray below the play grid.
         tray_top = self.oy + self.grid_size * CELL + 30
-        self.tray_pos = tray_positions(self.pieces, CELL, tray_top)
+        self.tray_pos = tray_positions(
+            self.pieces, CELL, tray_top
+        )
         tray_end = tray_bottom(self.pieces, self.tray_pos, CELL)
 
         self.screen_h = max(BASE_SCREEN_H, tray_end + 90)
@@ -508,7 +555,12 @@ class Game:
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    pygame.quit(); sys.exit()
+                    if self.show_level_menu:
+                        self.show_level_menu = False
+                    elif self.show_solution:
+                        self.show_solution = False
+                    else:
+                        pygame.quit(); sys.exit()
                 if event.key == pygame.K_s:
                     self.show_solution = not self.show_solution
                 if event.key == pygame.K_r:
@@ -523,16 +575,30 @@ class Game:
                 self.load_level(self.current_level - 1)
             if self.btn_next.handle(event):
                 self.load_level(self.current_level + 1)
+            if self.btn_level.handle(event):
+                self.show_level_menu = not self.show_level_menu
+                if self.show_level_menu:
+                    self.show_solution = False
+                continue
             if self.btn_reset.handle(event):
                 self.load_level(self.current_level)
             if self.btn_hint.handle(event):
                 self.show_solution = not self.show_solution
 
+            if self.show_level_menu and event.type == pygame.MOUSEBUTTONDOWN:
+                level = self.level_at_menu_pos(event.pos)
+                if level is not None:
+                    self.load_level(level)
+                    self.show_level_menu = False
+                elif not self.level_menu_rect().collidepoint(event.pos):
+                    self.show_level_menu = False
+                continue
+
             if self.show_solution and event.type == pygame.MOUSEBUTTONDOWN:
                 self.show_solution = False
 
             # Drag start
-            if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution:
+            if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution and not self.show_level_menu:
                 mx, my = event.pos
                 for i, p in enumerate(self.pieces):
                     if p.is_placed:
@@ -610,17 +676,50 @@ class Game:
     # ── Draw ──────────────────────────────────────────────────────────────────
     def draw(self):
         self.screen.fill(BG)
+        content_center_x = self.content_center_x()
 
         # ── Top bar ──
         draw_text(self.screen, f"LEVEL  {self.current_level:3d} / 100",
-                  SCREEN_W//2, 18, self.font_lg, color=BLACK, center=True)
+                  content_center_x, 62, self.font_lg, color=BLACK, center=True)
         diff_label = ["EASY","EASY","MEDIUM","MEDIUM","HARD","HARD","HARD","EXPERT","EXPERT","EXPERT","MASTER"][
             min(10, self.current_level // 10)]
         diff_color = [(80,180,80),(80,180,80),(200,160,20),(200,160,20),
                       (220,80,40),(220,80,40),(220,80,40),(180,30,30),(180,30,30),(180,30,30),(120,0,120)][
             min(10, self.current_level // 10)]
-        draw_text(self.screen, diff_label, SCREEN_W//2, 50, self.font_sm,
+        draw_text(self.screen, diff_label, content_center_x, 94, self.font_sm,
                   color=diff_color, center=True)
+
+        # Level sidebar
+        sidebar = self.sidebar_rect()
+        pygame.draw.rect(self.screen, (236, 232, 224), sidebar, border_radius=12)
+        pygame.draw.rect(self.screen, GREY_LT, sidebar, 2, border_radius=12)
+
+        menu_title = self.font_sm.render("LEVELS", True, GREY_MD)
+        self.screen.blit(menu_title, (sidebar.centerx - menu_title.get_width() // 2, sidebar.y - 24))
+
+        visible = self.visible_level_count()
+        for row in range(visible):
+            level = self.level_scroll + row
+            if level > 100:
+                break
+
+            item_rect = pygame.Rect(sidebar.x + 8, sidebar.y + row * SIDEBAR_ENTRY_H + 4,
+                                    sidebar.width - 16, SIDEBAR_ENTRY_H - 6)
+            selected = (level == self.current_level)
+            color = BLACK if selected else (250, 248, 244)
+            text_color = WHITE if selected else GREY_MD
+            pygame.draw.rect(self.screen, color, item_rect, border_radius=8)
+
+            label = self.font_sm.render(f"{level:3d}", True, text_color)
+            self.screen.blit(label, (item_rect.centerx - label.get_width() // 2,
+                                     item_rect.centery - label.get_height() // 2))
+
+        if self.level_scroll > 0:
+            up = self.font_sm.render("▲", True, GREY_MD)
+            self.screen.blit(up, (sidebar.centerx - up.get_width() // 2, sidebar.y + 4))
+        if self.level_scroll + visible <= 100:
+            down = self.font_sm.render("▼", True, GREY_MD)
+            self.screen.blit(down, (sidebar.centerx - down.get_width() // 2, sidebar.bottom - 18))
 
         # ── Preview ──
         label = self.font_sm.render("TARGET", True, GREY_MD)
@@ -638,7 +737,7 @@ class Game:
 
         # ── Tray pieces ──
         tray_label = self.font_sm.render("PIECES", True, GREY_MD)
-        self.screen.blit(tray_label, (SCREEN_W//2 - tray_label.get_width()//2,
+        self.screen.blit(tray_label, (content_center_x - tray_label.get_width()//2,
                                        self.oy + self.grid_size*CELL + 8))
 
         for i, p in enumerate(self.pieces):
@@ -675,13 +774,14 @@ class Game:
         # ── Buttons ──
         self.btn_prev.draw(self.screen)
         self.btn_next.draw(self.screen)
+        self.btn_level.draw(self.screen)
         self.btn_reset.draw(self.screen)
         self.btn_hint.draw(self.screen)
 
         # ── Keyboard hints ──
         hints = "R: reset  │  S: solution  │  ◀▶: level  │  ESC: quit"
         h = self.font_sm.render(hints, True, GREY_MD)
-        self.screen.blit(h, (SCREEN_W//2 - h.get_width()//2, self.screen_h - 22))
+        self.screen.blit(h, (content_center_x - h.get_width()//2, self.screen_h - 22))
 
         # ── Solved banner ──
         if self.solved:
@@ -695,12 +795,37 @@ class Game:
             self.screen.blit(s, (bx, by))
             self.screen.blit(banner, (bx+20, by+10))
             sub = self.font_sm.render("Press ▶ or RIGHT ARROW for next level", True, WHITE)
-            self.screen.blit(sub, (SCREEN_W//2 - sub.get_width()//2, by+bh+8))
+            self.screen.blit(sub, (content_center_x - sub.get_width()//2, by+bh+8))
 
         # ── Solution overlay ──
         if self.show_solution:
             draw_solution_overlay(self.screen, self.level_data, self.ox, self.oy,
                                   CELL, self.font_sm)
+
+        if self.show_level_menu:
+            overlay = pygame.Surface((SCREEN_W, self.screen_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            self.screen.blit(overlay, (0, 0))
+
+            panel = self.level_menu_rect()
+            pygame.draw.rect(self.screen, BG, panel, border_radius=12)
+            pygame.draw.rect(self.screen, GREY_MD, panel, 2, border_radius=12)
+
+            title = self.font_md.render("Select Level", True, BLACK)
+            subtitle = self.font_sm.render("Click a level to jump there. Click outside to close.", True, GREY_MD)
+            self.screen.blit(title, (panel.centerx - title.get_width() // 2, panel.y + 14))
+            self.screen.blit(subtitle, (panel.centerx - subtitle.get_width() // 2, panel.y + 36))
+
+            for level in range(101):
+                item_rect = self.level_menu_item_rect(level)
+                selected = (level == self.current_level)
+                color = BLACK if selected else (248, 246, 241)
+                text_color = WHITE if selected else GREY_MD
+                pygame.draw.rect(self.screen, color, item_rect, border_radius=8)
+                pygame.draw.rect(self.screen, GREY_LT, item_rect, 1, border_radius=8)
+                label = self.font_sm.render(f"{level:3d}", True, text_color)
+                self.screen.blit(label, (item_rect.centerx - label.get_width() // 2,
+                                         item_rect.centery - label.get_height() // 2))
 
         pygame.display.flip()
 
