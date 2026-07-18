@@ -18,12 +18,12 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 
 # ── Constants ────────────────────────────────────────────────────────────────
-SCREEN_W, BASE_SCREEN_H = 900, 700
+BASE_SCREEN_W, BASE_SCREEN_H = 900, 700
 GRID_COLS, GRID_ROWS = 8, 8
 CELL = 48                        # pixels per grid cell
 GRID_PIXEL = CELL * GRID_COLS    # 384 px
 PREVIEW_SIZE = 160               # target preview box
-TARGET_X = (SCREEN_W - GRID_PIXEL) // 2
+TARGET_X = (BASE_SCREEN_W - GRID_PIXEL) // 2
 TARGET_Y = 120
 PLAY_X   = TARGET_X
 PLAY_Y   = TARGET_Y + PREVIEW_SIZE + 40
@@ -269,7 +269,7 @@ def grids_match(a, b):
 TRAY_Y = PLAY_Y + GRID_PIXEL + 20
 
 def tray_positions(pieces: List[Piece], cell: int, top_y: int,
-                   left_bound: int = 0, right_bound: int = SCREEN_W):
+                   left_bound: int = 0, right_bound: int = BASE_SCREEN_W):
     """Lay out tray pieces in centred rows with spacing based on piece size."""
     if not pieces:
         return []
@@ -425,8 +425,9 @@ def draw_solution_overlay(surf, level_data, ox, oy, cell, font_sm):
 class Game:
     def __init__(self):
         pygame.init()
+        self.screen_w = BASE_SCREEN_W
         self.screen_h = BASE_SCREEN_H
-        self.screen = pygame.display.set_mode((SCREEN_W, self.screen_h))
+        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
         pygame.display.set_caption("XOR Monochrome Puzzle")
         self.clock = pygame.time.Clock()
 
@@ -450,25 +451,50 @@ class Game:
         top_btn_y = 20
         top_btn_gap = 18
         group_w = bw * 3 + top_btn_gap * 2
-        group_x = (SCREEN_W - group_w) // 2
+        group_x = (self.screen_w - group_w) // 2
         self.btn_prev    = Button((group_x, top_btn_y, bw, bh), "◀ PREV",   self.font_sm, BLACK)
         self.btn_next    = Button((group_x + (bw + top_btn_gap) * 2, top_btn_y, bw, bh), "NEXT ▶", self.font_sm, BLACK)
         self.btn_reset   = Button((20, self.screen_h-60, bw, bh), "↺ RESET",  self.font_sm, (80, 80, 80))
-        self.btn_hint    = Button((SCREEN_W-130, self.screen_h-60, bw, bh), "💡 HINT", self.font_sm, (60, 130, 60))
+        self.btn_hint    = Button((self.screen_w-130, self.screen_h-60, bw, bh), "💡 HINT", self.font_sm, (60, 130, 60))
         self.btn_level   = Button((group_x + bw + top_btn_gap, top_btn_y, bw, bh), "LEVELS", self.font_sm, (70, 70, 70))
 
         self.dragging_piece: Optional[int] = None  # index into self.pieces
         self.drag_offset = (0, 0)
 
+    def calculate_screen_width(self, pieces: List[Piece], cell: int):
+        horizontal_gap = 24
+        side_margin = 36
+        tray_width = 0
+        for i, piece in enumerate(pieces):
+            min_r, min_c, max_r, max_c = piece.bounding_box()
+            piece_w = (max_c - min_c + 1) * cell
+            tray_width += piece_w
+            if i:
+                tray_width += horizontal_gap
+        tray_width += side_margin * 2
+        return max(BASE_SCREEN_W, tray_width + 40)
+
+    def update_top_ui(self):
+        bw = self.btn_prev.rect.width
+        bh = self.btn_prev.rect.height
+        top_btn_y = self.btn_prev.rect.y
+        top_btn_gap = 18
+        group_w = bw * 3 + top_btn_gap * 2
+        group_x = (self.screen_w - group_w) // 2
+        self.btn_prev.rect.topleft = (group_x, top_btn_y)
+        self.btn_level.rect.topleft = (group_x + bw + top_btn_gap, top_btn_y)
+        self.btn_next.rect.topleft = (group_x + (bw + top_btn_gap) * 2, top_btn_y)
+
     def update_bottom_ui(self):
         self.btn_reset.rect.topleft = (20, self.screen_h - 60)
-        self.btn_hint.rect.topleft = (SCREEN_W - 130, self.screen_h - 60)
+        self.btn_hint.rect.topleft = (self.screen_w - 130, self.screen_h - 60)
 
     def content_center_x(self):
-        return SCREEN_W // 2
+        return self.screen_w // 2
 
     def level_menu_rect(self):
-        return pygame.Rect(120, 90, SCREEN_W - 240, min(500, self.screen_h - 160))
+        width = max(520, self.screen_w - 240)
+        return pygame.Rect((self.screen_w - width) // 2, 90, width, min(500, self.screen_h - 160))
 
     def sidebar_rect(self):
         return pygame.Rect(-220, 0, 0, 0)
@@ -521,6 +547,8 @@ class Game:
         self.elapsed = 0.0
         self.moves = 0
 
+        self.screen_w = self.calculate_screen_width(self.pieces, CELL)
+
         # Grid origin (centred)
         gs = self.grid_size
         content_center = self.content_center_x()
@@ -534,12 +562,14 @@ class Game:
         # Arrange pieces in a tidy tray below the play grid.
         tray_top = self.oy + self.grid_size * CELL + 30
         self.tray_pos = tray_positions(
-            self.pieces, CELL, tray_top
+            self.pieces, CELL, tray_top, 0, self.screen_w
         )
         tray_end = tray_bottom(self.pieces, self.tray_pos, CELL)
 
         self.screen_h = max(BASE_SCREEN_H, tray_end + 90)
-        self.screen = pygame.display.set_mode((SCREEN_W, self.screen_h))
+        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        if hasattr(self, "btn_prev") and hasattr(self, "btn_level") and hasattr(self, "btn_next"):
+            self.update_top_ui()
         if hasattr(self, "btn_reset") and hasattr(self, "btn_hint"):
             self.update_bottom_ui()
 
@@ -600,7 +630,9 @@ class Game:
             # Drag start
             if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution and not self.show_level_menu:
                 mx, my = event.pos
-                for i, p in enumerate(self.pieces):
+                picked_piece = False
+                for i in range(len(self.pieces) - 1, -1, -1):
+                    p = self.pieces[i]
                     if p.is_placed:
                         # pick up from grid
                         wc = p.world_cells()
@@ -614,6 +646,7 @@ class Game:
                                 self.drag_offset = (mx - (self.ox + p.grid_pos[0]*CELL),
                                                     my - (self.oy + p.grid_pos[1]*CELL))
                                 self.dragging_piece = i
+                                picked_piece = True
                                 break
                     else:
                         # pick up from tray
@@ -628,7 +661,10 @@ class Game:
                                 self.drag_offset = (mx - (tx - hw),
                                                     my - (ty - hh))
                                 self.dragging_piece = i
+                                picked_piece = True
                                 break
+                    if picked_piece:
+                        break
 
             # Drag motion
             if event.type == pygame.MOUSEMOTION and self.dragging_piece is not None:
@@ -788,7 +824,7 @@ class Game:
             banner = self.font_lg.render("✓  PUZZLE SOLVED!", True, WHITE)
             bw = banner.get_width() + 40
             bh = banner.get_height() + 20
-            bx = SCREEN_W//2 - bw//2
+            bx = self.screen_w // 2 - bw // 2
             by = self.screen_h // 2 - bh // 2
             s = pygame.Surface((bw, bh), pygame.SRCALPHA)
             s.fill((30, 160, 60, 230))
@@ -803,7 +839,7 @@ class Game:
                                   CELL, self.font_sm)
 
         if self.show_level_menu:
-            overlay = pygame.Surface((SCREEN_W, self.screen_h), pygame.SRCALPHA)
+            overlay = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150))
             self.screen.blit(overlay, (0, 0))
 
