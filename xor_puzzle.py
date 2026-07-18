@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 
 # ── Constants ────────────────────────────────────────────────────────────────
-SCREEN_W, SCREEN_H = 900, 700
+SCREEN_W, BASE_SCREEN_H = 900, 700
 GRID_COLS, GRID_ROWS = 8, 8
 CELL = 48                        # pixels per grid cell
 GRID_PIXEL = CELL * GRID_COLS    # 384 px
@@ -316,6 +316,15 @@ def tray_positions(pieces: List[Piece], cell: int, top_y: int):
 
     return positions
 
+def tray_bottom(pieces: List[Piece], positions: List[Tuple[int, int]], cell: int) -> int:
+    """Return the bottom-most y occupied by tray pieces."""
+    bottom = 0
+    for piece, (_, cy) in zip(pieces, positions):
+        min_r, min_c, max_r, max_c = piece.bounding_box()
+        piece_h = (max_r - min_r + 1) * cell
+        bottom = max(bottom, cy + piece_h // 2)
+    return bottom
+
 # ── Preview (scaled) ──────────────────────────────────────────────────────────
 def draw_preview(surf, target, ox, oy, size):
     grid_size = len(target)
@@ -366,6 +375,7 @@ class Button:
 
 # ── Solution overlay ──────────────────────────────────────────────────────────
 def draw_solution_overlay(surf, level_data, ox, oy, cell, font_sm):
+    screen_w, screen_h = surf.get_size()
     grid_size = level_data["grid_size"]
     pieces    = level_data["pieces"]
     solution  = level_data["solution"]
@@ -375,13 +385,13 @@ def draw_solution_overlay(surf, level_data, ox, oy, cell, font_sm):
         (220, 100, 180), (100, 100, 100),
     ]
     # darken bg
-    overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+    overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 160))
     surf.blit(overlay, (0, 0))
 
     panel_w, panel_h = grid_size * cell + 160, grid_size * cell + 100
-    px = (SCREEN_W - panel_w) // 2
-    py = (SCREEN_H - panel_h) // 2
+    px = (screen_w - panel_w) // 2
+    py = (screen_h - panel_h) // 2
     pygame.draw.rect(surf, BG, (px, py, panel_w, panel_h), border_radius=10)
     pygame.draw.rect(surf, GREY_MD, (px, py, panel_w, panel_h), 2, border_radius=10)
 
@@ -414,7 +424,8 @@ def draw_solution_overlay(surf, level_data, ox, oy, cell, font_sm):
 class Game:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        self.screen_h = BASE_SCREEN_H
+        self.screen = pygame.display.set_mode((SCREEN_W, self.screen_h))
         pygame.display.set_caption("XOR Monochrome Puzzle")
         self.clock = pygame.time.Clock()
 
@@ -435,12 +446,16 @@ class Game:
         bw, bh = 110, 34
         self.btn_prev    = Button((20, 20, bw, bh), "◀ PREV",   self.font_sm, BLACK)
         self.btn_next    = Button((SCREEN_W-130, 20, bw, bh), "NEXT ▶", self.font_sm, BLACK)
-        self.btn_reset   = Button((20, SCREEN_H-60, bw, bh), "↺ RESET",  self.font_sm, (80, 80, 80))
-        self.btn_hint    = Button((SCREEN_W-130, SCREEN_H-60, bw, bh), "💡 HINT", self.font_sm, (60, 130, 60))
+        self.btn_reset   = Button((20, self.screen_h-60, bw, bh), "↺ RESET",  self.font_sm, (80, 80, 80))
+        self.btn_hint    = Button((SCREEN_W-130, self.screen_h-60, bw, bh), "💡 HINT", self.font_sm, (60, 130, 60))
         self.btn_level   = None   # slider-ish, handled separately
 
         self.dragging_piece: Optional[int] = None  # index into self.pieces
         self.drag_offset = (0, 0)
+
+    def update_bottom_ui(self):
+        self.btn_reset.rect.topleft = (20, self.screen_h - 60)
+        self.btn_hint.rect.topleft = (SCREEN_W - 130, self.screen_h - 60)
 
     # ── Level management ──────────────────────────────────────────────────────
     def load_level(self, level: int):
@@ -474,6 +489,12 @@ class Game:
         # Arrange pieces in a tidy tray below the play grid.
         tray_top = self.oy + self.grid_size * CELL + 30
         self.tray_pos = tray_positions(self.pieces, CELL, tray_top)
+        tray_end = tray_bottom(self.pieces, self.tray_pos, CELL)
+
+        self.screen_h = max(BASE_SCREEN_H, tray_end + 90)
+        self.screen = pygame.display.set_mode((SCREEN_W, self.screen_h))
+        if hasattr(self, "btn_reset") and hasattr(self, "btn_hint"):
+            self.update_bottom_ui()
 
     def check_solved(self):
         current = compute_grid(self.pieces, self.grid_size)
@@ -648,7 +669,7 @@ class Game:
                                      color=ACCENT, alpha=180)
 
         # ── Moves counter ──
-        draw_text(self.screen, f"Moves: {self.moves}", 20, SCREEN_H//2,
+        draw_text(self.screen, f"Moves: {self.moves}", 20, self.screen_h // 2,
                   self.font_sm, color=GREY_MD)
 
         # ── Buttons ──
@@ -660,7 +681,7 @@ class Game:
         # ── Keyboard hints ──
         hints = "R: reset  │  S: solution  │  ◀▶: level  │  ESC: quit"
         h = self.font_sm.render(hints, True, GREY_MD)
-        self.screen.blit(h, (SCREEN_W//2 - h.get_width()//2, SCREEN_H - 22))
+        self.screen.blit(h, (SCREEN_W//2 - h.get_width()//2, self.screen_h - 22))
 
         # ── Solved banner ──
         if self.solved:
@@ -668,7 +689,7 @@ class Game:
             bw = banner.get_width() + 40
             bh = banner.get_height() + 20
             bx = SCREEN_W//2 - bw//2
-            by = SCREEN_H//2 - bh//2
+            by = self.screen_h // 2 - bh // 2
             s = pygame.Surface((bw, bh), pygame.SRCALPHA)
             s.fill((30, 160, 60, 230))
             self.screen.blit(s, (bx, by))
