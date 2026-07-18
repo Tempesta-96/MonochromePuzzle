@@ -269,12 +269,52 @@ def grids_match(a, b):
 # ── Tray layout ───────────────────────────────────────────────────────────────
 TRAY_Y = PLAY_Y + GRID_PIXEL + 20
 
-def tray_positions(num_pieces):
-    """Return list of (cx, cy) for tray pieces."""
-    spacing = min(100, (SCREEN_W - 40) // max(num_pieces, 1))
-    total = spacing * num_pieces
-    start_x = (SCREEN_W - total) // 2 + spacing // 2
-    return [(start_x + i * spacing, TRAY_Y + 35) for i in range(num_pieces)]
+def tray_positions(pieces: List[Piece], cell: int, top_y: int):
+    """Lay out tray pieces in centred rows with spacing based on piece size."""
+    if not pieces:
+        return []
+
+    horizontal_gap = 24
+    vertical_gap = 28
+    side_margin = 36
+    max_row_width = SCREEN_W - side_margin * 2
+
+    rows = []
+    current_row = []
+    current_width = 0
+
+    for i, piece in enumerate(pieces):
+        min_r, min_c, max_r, max_c = piece.bounding_box()
+        piece_w = (max_c - min_c + 1) * cell
+        piece_h = (max_r - min_r + 1) * cell
+        entry = (i, piece_w, piece_h)
+        entry_width = piece_w if not current_row else piece_w + horizontal_gap
+
+        if current_row and current_width + entry_width > max_row_width:
+            rows.append(current_row)
+            current_row = [entry]
+            current_width = piece_w
+        else:
+            current_row.append(entry)
+            current_width += entry_width
+
+    if current_row:
+        rows.append(current_row)
+
+    positions = [None] * len(pieces)
+    y = top_y
+    for row in rows:
+        row_width = sum(piece_w for _, piece_w, _ in row) + horizontal_gap * max(0, len(row) - 1)
+        row_height = max(piece_h for _, _, piece_h in row)
+        x = (SCREEN_W - row_width) // 2
+
+        for index, piece_w, piece_h in row:
+            positions[index] = (x + piece_w // 2, y + row_height // 2)
+            x += piece_w + horizontal_gap
+
+        y += row_height + vertical_gap
+
+    return positions
 
 # ── Preview (scaled) ──────────────────────────────────────────────────────────
 def draw_preview(surf, target, ox, oy, size):
@@ -417,9 +457,6 @@ class Game:
             for p in data["pieces"]
         ]
 
-        # Scatter pieces in tray (not placed yet)
-        self.tray_pos = tray_positions(len(self.pieces))
-
         self.show_solution = False
         self.solved = False
         self.elapsed = 0.0
@@ -433,6 +470,10 @@ class Game:
         # Preview origin
         self.prev_ox = (SCREEN_W - PREVIEW_SIZE) // 2
         self.prev_oy = TARGET_Y
+
+        # Arrange pieces in a tidy tray below the play grid.
+        tray_top = self.oy + self.grid_size * CELL + 30
+        self.tray_pos = tray_positions(self.pieces, CELL, tray_top)
 
     def check_solved(self):
         current = compute_grid(self.pieces, self.grid_size)
@@ -511,22 +552,28 @@ class Game:
             if event.type == pygame.MOUSEBUTTONUP and self.dragging_piece is not None:
                 p = self.pieces[self.dragging_piece]
                 mx, my = event.pos
-                gc = (mx - self.drag_offset[0]) // CELL
-                gr = (my - (self.oy - (self.oy - self.drag_offset[1] + self.drag_offset[1]))) // CELL
-                # simpler: use raw pos relative to grid origin
-                gc = round((mx - self.ox - self.drag_offset[0] + CELL//2) / CELL)
-                gr = round((my - self.oy - self.drag_offset[1] + CELL//2) / CELL)
+                piece_left = mx - self.drag_offset[0]
+                piece_top = my - self.drag_offset[1]
+                gc = round((piece_left - self.ox) / CELL)
+                gr = round((piece_top - self.oy) / CELL)
 
                 # clamp so piece stays in grid
                 min_r, min_c, max_r, max_c = p.bounding_box()
                 gc = max(0, min(gc, self.grid_size - (max_c - min_c + 1)))
                 gr = max(0, min(gr, self.grid_size - (max_r - min_r + 1)))
 
-                # Check if mouse released over grid area
+                # Check if the piece overlaps the grid before snapping into place.
                 gw = self.grid_size * CELL
                 gh = self.grid_size * CELL
-                if (self.ox <= mx < self.ox + gw and
-                        self.oy <= my < self.oy + gh):
+                piece_right = piece_left + (max_c - min_c + 1) * CELL
+                piece_bottom = piece_top + (max_r - min_r + 1) * CELL
+                overlaps_grid = (
+                    piece_right > self.ox and
+                    piece_left < self.ox + gw and
+                    piece_bottom > self.oy and
+                    piece_top < self.oy + gh
+                )
+                if overlaps_grid:
                     p.grid_pos = (gc, gr)
                     p.is_placed = True
                     self.moves += 1
