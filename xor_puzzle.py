@@ -440,6 +440,7 @@ class Game:
         self.level_scroll = 0
         self.show_solution = False
         self.show_level_menu = False
+        self.show_first_hint = False
         self.solved = False
         self.elapsed = 0.0
         self.moves = 0
@@ -527,6 +528,12 @@ class Game:
                 return level
         return None
 
+    def next_hint_index(self):
+        for i, (piece, target_pos) in enumerate(zip(self.pieces, self.solution)):
+            if not piece.is_placed or piece.grid_pos != target_pos:
+                return i
+        return None
+
     # ── Level management ──────────────────────────────────────────────────────
     def load_level(self, level: int):
         self.current_level = max(0, min(100, level))
@@ -543,6 +550,7 @@ class Game:
         ]
 
         self.show_solution = False
+        self.show_first_hint = False
         self.solved = False
         self.elapsed = 0.0
         self.moves = 0
@@ -593,6 +601,8 @@ class Game:
                         pygame.quit(); sys.exit()
                 if event.key == pygame.K_s:
                     self.show_solution = not self.show_solution
+                    if self.show_solution:
+                        self.show_first_hint = False
                 if event.key == pygame.K_r:
                     self.load_level(self.current_level)
                 if event.key == pygame.K_RIGHT:
@@ -609,11 +619,15 @@ class Game:
                 self.show_level_menu = not self.show_level_menu
                 if self.show_level_menu:
                     self.show_solution = False
+                    self.show_first_hint = False
                 continue
             if self.btn_reset.handle(event):
                 self.load_level(self.current_level)
             if self.btn_hint.handle(event):
-                self.show_solution = not self.show_solution
+                self.show_first_hint = not self.show_first_hint
+                if self.show_first_hint:
+                    self.show_solution = False
+                continue
 
             if self.show_level_menu and event.type == pygame.MOUSEBUTTONDOWN:
                 level = self.level_at_menu_pos(event.pos)
@@ -626,6 +640,21 @@ class Game:
 
             if self.show_solution and event.type == pygame.MOUSEBUTTONDOWN:
                 self.show_solution = False
+
+            if self.show_first_hint and event.type == pygame.MOUSEBUTTONDOWN:
+                hint_cells = set()
+                hint_index = self.next_hint_index()
+                if hint_index is not None:
+                    hint_piece = self.pieces[hint_index]
+                    gc, gr = self.solution[hint_index]
+                    for dr, dc in hint_piece.cells:
+                        hint_cells.add((gr + dr, gc + dc))
+                if not any(
+                    self.ox + c * CELL <= event.pos[0] < self.ox + (c + 1) * CELL and
+                    self.oy + r * CELL <= event.pos[1] < self.oy + (r + 1) * CELL
+                    for r, c in hint_cells
+                ):
+                    self.show_first_hint = False
 
             # Drag start
             if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution and not self.show_level_menu:
@@ -766,6 +795,18 @@ class Game:
         # ── Play grid ──
         current_grid = compute_grid(self.pieces, self.grid_size)
         draw_grid(self.screen, current_grid, self.ox, self.oy, CELL)
+        hint_index = self.next_hint_index() if self.show_first_hint else None
+        if hint_index is not None:
+            hint_piece = self.pieces[hint_index]
+            hint_gc, hint_gr = self.solution[hint_index]
+            for dr, dc in hint_piece.cells:
+                hint_rect = pygame.Rect(
+                    self.ox + (hint_gc + dc) * CELL + 3,
+                    self.oy + (hint_gr + dr) * CELL + 3,
+                    CELL - 6,
+                    CELL - 6,
+                )
+                pygame.draw.rect(self.screen, ACCENT, hint_rect, 3, border_radius=6)
 
         # ── Grid label ──
         label2 = self.font_sm.render("PLAY AREA  (drag pieces here)", True, GREY_MD)
@@ -780,7 +821,7 @@ class Game:
             if not p.is_placed and not p.dragging:
                 if i < len(self.tray_pos):
                     tx, ty = self.tray_pos[i]
-                    selected = (self.dragging_piece == i)
+                    selected = (self.dragging_piece == i) or (hint_index is not None and i == hint_index)
                     draw_tray_piece(self.screen, p, tx, ty, CELL, selected)
                     num = self.font_sm.render(str(i+1), True, GREY_MD)
                     self.screen.blit(num, (tx - 5, ty + 30))
