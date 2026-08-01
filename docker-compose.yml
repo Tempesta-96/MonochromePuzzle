@@ -5,14 +5,15 @@ services:
       dockerfile: Dockerfile
     container_name: monochrome-puzzle
     working_dir: /app
+    ports:
+      - "8000:8000"
     environment:
-      DISPLAY: ${DISPLAY:-host.docker.internal:0.0}
-      SDL_AUDIODRIVER: ${SDL_AUDIODRIVER:-dummy}
       PYGAME_HIDE_SUPPORT_PROMPT: "1"
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
     volumes:
       - .:/app
-    stdin_open: true
-    tty: true
+    command: ["python", "xor_puzzle.py", "--web", "--host", "0.0.0.0", "--port", "8000"]
 
   monochrome-puzzle-cli:
     build:
@@ -21,9 +22,9 @@ services:
     container_name: monochrome-puzzle-cli
     working_dir: /app
     environment:
+      PYGAME_HIDE_SUPPORT_PROMPT: "1"
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
-      PYGAME_HIDE_SUPPORT_PROMPT: "1"
     volumes:
       - .:/app
     command: ["python", "xor_puzzle.py", "--print-solution", "25"]

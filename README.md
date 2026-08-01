@@ -88,11 +88,19 @@ Print a generated solution in the terminal:
 python xor_puzzle.py --print-solution 25
 ```
 
+Run in a browser on localhost:
+
+```bash
+python xor_puzzle.py --web --port 8000
+```
+
+Then open `http://127.0.0.1:8000`.
+
 ## Docker
 
-This project includes a Docker setup for running the game or CLI tools inside a container.
+This project now includes a Docker setup that runs the current localhost web mode directly inside a container.
 
-Files added for Docker:
+Files:
 
 - [Dockerfile](./Dockerfile)
 - [docker-compose.yml](./docker-compose.yml)
@@ -107,22 +115,26 @@ From the `MonochromePuzzle` folder:
 docker build -t monochrome-puzzle .
 ```
 
-### Run the GUI container
+### Run the game from Docker
 
 ```bash
-docker run --rm -it monochrome-puzzle
+docker run --rm -p 8000:8000 monochrome-puzzle
 ```
 
-### Run the GUI container with Docker Compose
+Then open `http://localhost:8000`.
+
+### Run with Docker Compose
 
 ```bash
 docker compose up --build monochrome-puzzle
 ```
 
-### Run a specific level
+Then open `http://localhost:8000`.
+
+### Start from a specific level
 
 ```bash
-docker run --rm -it monochrome-puzzle python xor_puzzle.py --level 25
+docker run --rm -p 8000:8000 monochrome-puzzle python xor_puzzle.py --web --host 0.0.0.0 --port 8000 --level 25
 ```
 
 ### Print a solution from Docker
@@ -131,158 +143,26 @@ docker run --rm -it monochrome-puzzle python xor_puzzle.py --level 25
 docker run --rm monochrome-puzzle python xor_puzzle.py --print-solution 25
 ```
 
-### Run CLI mode with Docker Compose
-
-This mode does not need a desktop display:
+### CLI mode with Docker Compose
 
 ```bash
 docker compose run --rm monochrome-puzzle-cli
 ```
 
-You can also override the command:
+Override the CLI command if needed:
 
 ```bash
 docker compose run --rm monochrome-puzzle-cli python xor_puzzle.py --print-solution 40
 ```
 
-### Display setup for Pygame
+### Docker services
 
-`MonochromePuzzle` is a GUI app, so the container needs access to a display server.
+- `monochrome-puzzle`: runs the browser-accessible game on port `8000`
+- `monochrome-puzzle-cli`: runs terminal-only commands such as `--print-solution`
 
-The included `docker-compose.yml` is now split into two use cases:
+### Why this setup works
 
-- `monochrome-puzzle`: GUI mode
-- `monochrome-puzzle-cli`: headless terminal mode
-
-### Windows with Docker Desktop and VcXsrv
-
-This is the most practical setup if you are running Docker containers on Windows and want the Pygame window to appear on your desktop.
-
-1. Install and start `VcXsrv`.
-2. Launch it with:
-   - Multiple windows
-   - Start no client
-   - Disable access control
-3. Allow `VcXsrv` through Windows Defender Firewall on private networks.
-4. In PowerShell, run:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-docker compose up --build monochrome-puzzle
-```
-
-If you prefer plain `docker run`:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-docker run --rm -it -e DISPLAY=$env:DISPLAY monochrome-puzzle
-```
-
-### Windows with WSLg
-
-If your Docker workflow is inside WSL with WSLg enabled, your Linux GUI stack may already provide a display. In that case, check your current `DISPLAY` value first:
-
-```bash
-echo $DISPLAY
-```
-
-Then pass that value through:
-
-```bash
-DISPLAY=$DISPLAY docker compose up --build monochrome-puzzle
-```
-
-### If the window does not appear
-
-Try these checks:
-
-- Make sure `VcXsrv` is running before you start the container.
-- Make sure Windows Firewall is not blocking the X server.
-- Keep `DISPLAY=host.docker.internal:0.0` for Docker Desktop on Windows.
-- Use `monochrome-puzzle-cli` first to confirm the container itself is healthy.
-
-### Verify X11 before launching the game
-
-If Docker builds successfully but the game window still does not appear, test the display connection separately from Pygame.
-
-First rebuild so the diagnostic tools are available:
-
-```powershell
-docker compose build --no-cache monochrome-puzzle
-```
-
-Then check whether the container can reach your Windows X server:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-docker compose run --rm monochrome-puzzle xdpyinfo
-```
-
-If that works, try a tiny test window:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-docker compose run --rm monochrome-puzzle xclock
-```
-
-How to read the result:
-
-- If `xdpyinfo` fails, the issue is the X server connection, not Pygame.
-- If `xclock` opens, the container-to-Windows display path is working.
-- If both succeed but the game still fails, the remaining issue is SDL/Pygame-specific.
-
-### Recommended troubleshooting order on Windows
-
-1. Start `VcXsrv` with access control disabled.
-2. Set the display in PowerShell:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-```
-
-3. Test the X connection:
-
-```powershell
-docker compose run --rm monochrome-puzzle xdpyinfo
-```
-
-4. Test a basic X window:
-
-```powershell
-docker compose run --rm monochrome-puzzle xclock
-```
-
-5. Start the game:
-
-```powershell
-docker compose up monochrome-puzzle
-```
-
-### Environment variables you can tune
-
-- `DISPLAY`: where the GUI window should be forwarded
-- `SDL_AUDIODRIVER`: defaults to `dummy` to avoid audio-device errors in containers
-
-Examples:
-
-```bash
-docker compose run --rm -e DISPLAY=host.docker.internal:0.0 monochrome-puzzle
-```
-
-```bash
-docker compose run --rm -e SDL_VIDEODRIVER=dummy monochrome-puzzle-cli
-```
-
-### Quick recommendation
-
-For your environment, start with this on Windows:
-
-```powershell
-$env:DISPLAY="host.docker.internal:0.0"
-docker compose up --build monochrome-puzzle
-```
-
-If that still does not show a Pygame window, use `VcXsrv` and verify that access control is disabled.
+The game already has a built-in `--web` mode, so the container does not need X11, VcXsrv, or noVNC. Docker just exposes the local web server from the container to your machine.
 
 ## Puzzle Design Notes
 
