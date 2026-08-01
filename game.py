@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 
 import pygame
 
@@ -186,148 +187,151 @@ class Game:
 
     def handle_events(self):
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+            self.process_event(event)
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    if self.show_level_menu:
-                        self.show_level_menu = False
-                    elif self.show_solution:
-                        self.show_solution = False
-                    else:
-                        pygame.quit()
-                        sys.exit()
-                if event.key == pygame.K_s:
-                    self.show_solution = not self.show_solution
-                    if self.show_solution:
-                        self.show_first_hint = False
-                if event.key == pygame.K_r:
-                    self.load_level(self.current_level)
-                if event.key == pygame.K_RIGHT:
-                    self.load_level(self.current_level + 1)
-                if event.key == pygame.K_LEFT:
-                    self.load_level(self.current_level - 1)
+    def process_event(self, event):
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
 
-            if self.btn_prev.handle(event):
-                self.load_level(self.current_level - 1)
-            if self.btn_next.handle(event):
-                self.load_level(self.current_level + 1)
-            if self.btn_level.handle(event):
-                self.show_level_menu = not self.show_level_menu
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
                 if self.show_level_menu:
-                    self.show_solution = False
-                    self.show_first_hint = False
-                continue
-            if self.btn_reset.handle(event):
-                self.load_level(self.current_level)
-            if self.btn_hint.handle(event):
-                self.show_first_hint = not self.show_first_hint
-                if self.show_first_hint:
-                    self.show_solution = False
-                continue
-
-            if self.show_level_menu and event.type == pygame.MOUSEBUTTONDOWN:
-                level = self.level_at_menu_pos(event.pos)
-                if level is not None:
-                    self.load_level(level)
                     self.show_level_menu = False
-                elif not self.level_menu_rect().collidepoint(event.pos):
-                    self.show_level_menu = False
-                continue
-
-            if self.show_solution and event.type == pygame.MOUSEBUTTONDOWN:
-                self.show_solution = False
-
-            if self.show_first_hint and event.type == pygame.MOUSEBUTTONDOWN:
-                hint_cells = set()
-                hint_index = self.next_hint_index()
-                if hint_index is not None:
-                    hint_piece = self.pieces[hint_index]
-                    gc, gr = self.solution[hint_index]
-                    for dr, dc in hint_piece.cells:
-                        hint_cells.add((gr + dr, gc + dc))
-                if not any(
-                    self.ox + c * CELL <= event.pos[0] < self.ox + (c + 1) * CELL
-                    and self.oy + r * CELL <= event.pos[1] < self.oy + (r + 1) * CELL
-                    for r, c in hint_cells
-                ):
-                    self.show_first_hint = False
-
-            if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution and not self.show_level_menu:
-                mx, my = event.pos
-                picked_piece = False
-                for i in range(len(self.pieces) - 1, -1, -1):
-                    piece = self.pieces[i]
-                    if piece.is_placed:
-                        for r, c in piece.world_cells():
-                            rx = self.ox + c * CELL
-                            ry = self.oy + r * CELL
-                            if rx <= mx < rx + CELL and ry <= my < ry + CELL:
-                                piece.is_placed = False
-                                piece.dragging = True
-                                piece.drag_screen = (mx, my)
-                                self.drag_offset = (
-                                    mx - (self.ox + piece.grid_pos[0] * CELL),
-                                    my - (self.oy + piece.grid_pos[1] * CELL),
-                                )
-                                self.dragging_piece = i
-                                picked_piece = True
-                                break
-                    else:
-                        if i < len(self.tray_pos):
-                            tx, ty = self.tray_pos[i]
-                            min_r, min_c, max_r, max_c = piece.bounding_box()
-                            hw = (max_c - min_c + 1) * CELL // 2
-                            hh = (max_r - min_r + 1) * CELL // 2
-                            if abs(mx - tx) < hw + 10 and abs(my - ty) < hh + 10:
-                                piece.dragging = True
-                                piece.drag_screen = (mx, my)
-                                self.drag_offset = (mx - (tx - hw), my - (ty - hh))
-                                self.dragging_piece = i
-                                picked_piece = True
-                                break
-                    if picked_piece:
-                        break
-
-            if event.type == pygame.MOUSEMOTION and self.dragging_piece is not None:
-                self.pieces[self.dragging_piece].drag_screen = event.pos
-
-            if event.type == pygame.MOUSEBUTTONUP and self.dragging_piece is not None:
-                piece = self.pieces[self.dragging_piece]
-                mx, my = event.pos
-                piece_left = mx - self.drag_offset[0]
-                piece_top = my - self.drag_offset[1]
-                gc = round((piece_left - self.ox) / CELL)
-                gr = round((piece_top - self.oy) / CELL)
-
-                min_r, min_c, max_r, max_c = piece.bounding_box()
-                gc = max(0, min(gc, self.grid_size - (max_c - min_c + 1)))
-                gr = max(0, min(gr, self.grid_size - (max_r - min_r + 1)))
-
-                gw = self.grid_size * CELL
-                gh = self.grid_size * CELL
-                piece_right = piece_left + (max_c - min_c + 1) * CELL
-                piece_bottom = piece_top + (max_r - min_r + 1) * CELL
-                overlaps_grid = (
-                    piece_right > self.ox
-                    and piece_left < self.ox + gw
-                    and piece_bottom > self.oy
-                    and piece_top < self.oy + gh
-                )
-                if overlaps_grid:
-                    piece.grid_pos = (gc, gr)
-                    piece.is_placed = True
-                    self.moves += 1
+                elif self.show_solution:
+                    self.show_solution = False
                 else:
-                    piece.is_placed = False
+                    pygame.quit()
+                    sys.exit()
+            if event.key == pygame.K_s:
+                self.show_solution = not self.show_solution
+                if self.show_solution:
+                    self.show_first_hint = False
+            if event.key == pygame.K_r:
+                self.load_level(self.current_level)
+            if event.key == pygame.K_RIGHT:
+                self.load_level(self.current_level + 1)
+            if event.key == pygame.K_LEFT:
+                self.load_level(self.current_level - 1)
 
-                piece.dragging = False
-                self.dragging_piece = None
+        if self.btn_prev.handle(event):
+            self.load_level(self.current_level - 1)
+        if self.btn_next.handle(event):
+            self.load_level(self.current_level + 1)
+        if self.btn_level.handle(event):
+            self.show_level_menu = not self.show_level_menu
+            if self.show_level_menu:
+                self.show_solution = False
+                self.show_first_hint = False
+            return
+        if self.btn_reset.handle(event):
+            self.load_level(self.current_level)
+        if self.btn_hint.handle(event):
+            self.show_first_hint = not self.show_first_hint
+            if self.show_first_hint:
+                self.show_solution = False
+            return
 
-                if not self.solved:
-                    self.solved = self.check_solved()
+        if self.show_level_menu and event.type == pygame.MOUSEBUTTONDOWN:
+            level = self.level_at_menu_pos(event.pos)
+            if level is not None:
+                self.load_level(level)
+                self.show_level_menu = False
+            elif not self.level_menu_rect().collidepoint(event.pos):
+                self.show_level_menu = False
+            return
+
+        if self.show_solution and event.type == pygame.MOUSEBUTTONDOWN:
+            self.show_solution = False
+
+        if self.show_first_hint and event.type == pygame.MOUSEBUTTONDOWN:
+            hint_cells = set()
+            hint_index = self.next_hint_index()
+            if hint_index is not None:
+                hint_piece = self.pieces[hint_index]
+                gc, gr = self.solution[hint_index]
+                for dr, dc in hint_piece.cells:
+                    hint_cells.add((gr + dr, gc + dc))
+            if not any(
+                self.ox + c * CELL <= event.pos[0] < self.ox + (c + 1) * CELL
+                and self.oy + r * CELL <= event.pos[1] < self.oy + (r + 1) * CELL
+                for r, c in hint_cells
+            ):
+                self.show_first_hint = False
+
+        if event.type == pygame.MOUSEBUTTONDOWN and not self.show_solution and not self.show_level_menu:
+            mx, my = event.pos
+            picked_piece = False
+            for i in range(len(self.pieces) - 1, -1, -1):
+                piece = self.pieces[i]
+                if piece.is_placed:
+                    for r, c in piece.world_cells():
+                        rx = self.ox + c * CELL
+                        ry = self.oy + r * CELL
+                        if rx <= mx < rx + CELL and ry <= my < ry + CELL:
+                            piece.is_placed = False
+                            piece.dragging = True
+                            piece.drag_screen = (mx, my)
+                            self.drag_offset = (
+                                mx - (self.ox + piece.grid_pos[0] * CELL),
+                                my - (self.oy + piece.grid_pos[1] * CELL),
+                            )
+                            self.dragging_piece = i
+                            picked_piece = True
+                            break
+                else:
+                    if i < len(self.tray_pos):
+                        tx, ty = self.tray_pos[i]
+                        min_r, min_c, max_r, max_c = piece.bounding_box()
+                        hw = (max_c - min_c + 1) * CELL // 2
+                        hh = (max_r - min_r + 1) * CELL // 2
+                        if abs(mx - tx) < hw + 10 and abs(my - ty) < hh + 10:
+                            piece.dragging = True
+                            piece.drag_screen = (mx, my)
+                            self.drag_offset = (mx - (tx - hw), my - (ty - hh))
+                            self.dragging_piece = i
+                            picked_piece = True
+                            break
+                if picked_piece:
+                    break
+
+        if event.type == pygame.MOUSEMOTION and self.dragging_piece is not None:
+            self.pieces[self.dragging_piece].drag_screen = event.pos
+
+        if event.type == pygame.MOUSEBUTTONUP and self.dragging_piece is not None:
+            piece = self.pieces[self.dragging_piece]
+            mx, my = event.pos
+            piece_left = mx - self.drag_offset[0]
+            piece_top = my - self.drag_offset[1]
+            gc = round((piece_left - self.ox) / CELL)
+            gr = round((piece_top - self.oy) / CELL)
+
+            min_r, min_c, max_r, max_c = piece.bounding_box()
+            gc = max(0, min(gc, self.grid_size - (max_c - min_c + 1)))
+            gr = max(0, min(gr, self.grid_size - (max_r - min_r + 1)))
+
+            gw = self.grid_size * CELL
+            gh = self.grid_size * CELL
+            piece_right = piece_left + (max_c - min_c + 1) * CELL
+            piece_bottom = piece_top + (max_r - min_r + 1) * CELL
+            overlaps_grid = (
+                piece_right > self.ox
+                and piece_left < self.ox + gw
+                and piece_bottom > self.oy
+                and piece_top < self.oy + gh
+            )
+            if overlaps_grid:
+                piece.grid_pos = (gc, gr)
+                piece.is_placed = True
+                self.moves += 1
+            else:
+                piece.is_placed = False
+
+            piece.dragging = False
+            self.dragging_piece = None
+
+            if not self.solved:
+                self.solved = self.check_solved()
 
     def draw(self):
         self.screen.fill(BG)
@@ -452,6 +456,26 @@ class Game:
 
         pygame.display.flip()
 
+    def step(self):
+        dt = self.clock.tick(FPS) / 1000.0
+        if not self.solved:
+            self.elapsed += dt
+        self.handle_events()
+        self.draw()
+
+    def frame_bytes(self):
+        fd, temp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            pygame.image.save(self.screen, temp_path)
+            with open(temp_path, "rb") as handle:
+                return handle.read()
+        finally:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
     def run(self):
         print("=" * 55)
         print("  XOR MONOCHROME PUZZLE")
@@ -469,8 +493,4 @@ class Game:
         print("=" * 55)
 
         while True:
-            dt = self.clock.tick(FPS) / 1000.0
-            if not self.solved:
-                self.elapsed += dt
-            self.handle_events()
-            self.draw()
+            self.step()

@@ -13,6 +13,7 @@ import sys
 
 from game import Game
 from generation import generate_level
+from web_mode import LocalhostGameServer
 
 
 def print_solution(level: int):
@@ -39,11 +40,18 @@ def main():
     parser = argparse.ArgumentParser(description="XOR Monochrome Puzzle Game")
     parser.add_argument("--level", type=int, default=1, help="Starting level (0-100, default 1)")
     parser.add_argument("--print-solution", type=int, default=None, help="Print solution for a given level and exit")
+    parser.add_argument("--web", action="store_true", help="Run the game in a browser on localhost")
+    parser.add_argument("--host", default="127.0.0.1", help="Host for web mode (default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="Port for web mode (default 8000)")
     args = parser.parse_args()
 
     if args.print_solution is not None:
         print_solution(args.print_solution)
         sys.exit(0)
+
+    if args.web:
+        LocalhostGameServer(args.host, args.port, args.level).run()
+        return
 
     game = Game()
     game.current_level = max(0, min(100, args.level))
