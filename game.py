@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pygame
@@ -37,7 +38,18 @@ class Game:
         pygame.init()
         self.screen_w = BASE_SCREEN_W
         self.screen_h = BASE_SCREEN_H
-        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        try:
+            self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        except pygame.error as exc:
+            display = os.environ.get("DISPLAY", "<not set>")
+            video_driver = os.environ.get("SDL_VIDEODRIVER", "<auto>")
+            raise RuntimeError(
+                "Pygame could not open a display inside the container. "
+                f"DISPLAY={display}, SDL_VIDEODRIVER={video_driver}. "
+                "If you are running the GUI in Docker on Windows, start VcXsrv and set "
+                "DISPLAY=host.docker.internal:0.0 before launching the container. "
+                "For non-GUI usage, run the monochrome-puzzle-cli service instead."
+            ) from exc
         pygame.display.set_caption("XOR Monochrome Puzzle")
         self.clock = pygame.time.Clock()
 

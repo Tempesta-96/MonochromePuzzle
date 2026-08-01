@@ -1,0 +1,29 @@
+services:
+  monochrome-puzzle:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monochrome-puzzle
+    working_dir: /app
+    environment:
+      DISPLAY: ${DISPLAY:-host.docker.internal:0.0}
+      SDL_AUDIODRIVER: ${SDL_AUDIODRIVER:-dummy}
+      PYGAME_HIDE_SUPPORT_PROMPT: "1"
+    volumes:
+      - .:/app
+    stdin_open: true
+    tty: true
+
+  monochrome-puzzle-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monochrome-puzzle-cli
+    working_dir: /app
+    environment:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYGAME_HIDE_SUPPORT_PROMPT: "1"
+    volumes:
+      - .:/app
+    command: ["python", "xor_puzzle.py", "--print-solution", "25"]
