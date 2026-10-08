@@ -186,3 +186,21 @@ Possible next steps for the project:
 - improve piece selection feedback for dense overlaps
 - add handcrafted challenge levels alongside generated ones
 - add other games observation, memory, spatial, creativity, interpretation, calculation
+
+## Play online (GitHub Pages)
+
+The standalone website is in `docs/`. It runs entirely in the browser, with the
+same 101 generated puzzles as the Python game, click or touch placement, dragging,
+hints, solution overlays, and saved solved-level progress.
+
+After GitHub Pages is enabled, the website address is:
+https://tempesta-96.github.io/MonochromePuzzle/
+
+The included `.github/workflows/pages.yml` publishes `docs/` on pushes to `main`.
+If the first deployment needs Pages enabled, open the repository Settings > Pages
+and select **GitHub Actions** as the source, then rerun the publishing workflow.
+Alternatively choose **Deploy from a branch**, branch **main**, folder **/docs**.
+
+For a local preview: `python -m http.server 8000 --directory docs`, then open
+http://localhost:8000. Regenerate the exported puzzles after changes to the Python
+level generator with `python export_web_levels.py`.
