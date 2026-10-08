@@ -1,4 +1,4 @@
-# MonochromePuzzle
+﻿# MonochromePuzzle
 
 `MonochromePuzzle` is a small Pygame puzzle game built around XOR overlap logic:
 
@@ -34,7 +34,7 @@ When two black cells overlap, they cancel out and become white. Because of that,
 - `LEVELS`: open the level picker
 - `RESET` or `R`: restart the current level
 - `S`: show or hide the full solution overlay
-- `◀` / `▶` or `Left` / `Right`: previous or next level
+- `â—€` / `â–¶` or `Left` / `Right`: previous or next level
 - `ESC`: close overlays or quit
 
 ## Hints
@@ -174,7 +174,7 @@ This project mixes several kinds of player skill:
 - pattern interpretation
 - experimentation
 
-Because the board uses XOR instead of normal stacking, the best move is often counterintuitive. A piece that seems to “erase” part of the board can still be the correct move.
+Because the board uses XOR instead of normal stacking, the best move is often counterintuitive. A piece that seems to â€œeraseâ€ part of the board can still be the correct move.
 
 ## Future Improvements
 
@@ -190,7 +190,7 @@ Possible next steps for the project:
 ## Play online (GitHub Pages)
 
 The standalone website is in `docs/`. It runs entirely in the browser, with the
-same 101 generated puzzles as the Python game, click or touch placement, dragging,
+same 101 generated puzzles as the Python game, mouse and touch dragging with live XOR previews and grid snapping,
 hints, solution overlays, and saved solved-level progress.
 
 After GitHub Pages is enabled, the website address is:
@@ -204,3 +204,4 @@ Alternatively choose **Deploy from a branch**, branch **main**, folder **/docs**
 For a local preview: `python -m http.server 8000 --directory docs`, then open
 http://localhost:8000. Regenerate the exported puzzles after changes to the Python
 level generator with `python export_web_levels.py`.
+
