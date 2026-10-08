@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 URL = Path('docs/index.html').resolve().as_uri()
 
@@ -41,7 +41,18 @@ with sync_playwright() as p:
         for i, (x,y) in enumerate(page.evaluate('data.solution')):
             drag_tray(page, i, x, y)
         assert 'Pattern matched' in page.locator('#status').inner_text()
+        assert page.locator('#celebration .success-card').count() == 1
+        assert f'Level {number} complete' in page.locator('#celebration').inner_text()
+        assert page.evaluate("getComputedStyle(document.getElementById('celebration')).pointerEvents") == 'none'
+        assert page.evaluate("getComputedStyle(document.querySelector('.success-card')).pointerEvents") == 'none'
+        assert page.evaluate("(() => { const overlay=document.getElementById('celebration'); render(); return overlay===document.getElementById('celebration'); })()")
+        if number == 0:
+            page.emulate_media(reduced_motion='reduce')
+            assert page.locator('.confetti').first.evaluate('(el)=>getComputedStyle(el).display') == 'none'
+            page.emulate_media(reduced_motion='no-preference')
+            page.wait_for_function("!document.getElementById('celebration')", timeout=5000)
         page.click('#reset')
+        assert page.locator('#celebration').count() == 0
         assert page.evaluate('positions.every(p=>p===null)')
     page.select_option('#level','1')
     x,y=page.evaluate('data.solution[0]')
@@ -96,4 +107,4 @@ with sync_playwright() as p:
     assert not errors,errors
     mobile.screenshot(path='website-preview.png',full_page=True)
     browser.close()
-    print('PASS: 101 targets; four levels solved by dragging; live snap previews; direct board movement; invalid drop restore; outside return; Escape; hints; saved progress; real touch placement, cancellation, auto-scroll and mobile layout; no JS errors.')
+    print('PASS: success overlay, no repeat celebration, pass-through input, reduced motion, auto-dismiss, reset cleanup; 101 targets; four levels solved by dragging; live snap previews; direct board movement; invalid drop restore; outside return; Escape; hints; saved progress; real touch placement, cancellation, auto-scroll and mobile layout; no JS errors.')

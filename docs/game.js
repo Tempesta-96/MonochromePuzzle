@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const $ = id => document.getElementById(id);
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('monochrome-progress') || '{}') || {}; } catch {}
@@ -6,6 +6,33 @@ let current = Number.isInteger(saved.level) ? Math.max(0, Math.min(100, saved.le
 const completed = new Set(Array.isArray(saved.completed) ? saved.completed.filter(n => Number.isInteger(n) && n >= 0 && n <= 100) : []);
 let data, positions, selected = null, hint = null, showSolution = false, drag = null;
 let scrollFrame = null;
+let wasSolved = false, celebrationTimer = null;
+function clearCelebration() {
+  clearTimeout(celebrationTimer);
+  document.getElementById('celebration')?.remove();
+}
+function celebrate() {
+  clearCelebration();
+  const overlay = document.createElement('div');
+  overlay.id = 'celebration'; overlay.setAttribute('aria-hidden', 'true');
+  const card = document.createElement('div'); card.className = 'success-card';
+  const badge = document.createElement('span'); badge.className = 'success-badge'; badge.textContent = '✓';
+  const message = document.createElement('div');
+  const title = document.createElement('strong'); title.textContent = 'Pattern matched!';
+  const detail = document.createElement('span'); detail.textContent = `Level ${current} complete. Nicely done.`;
+  message.append(title, detail); card.append(badge, message); overlay.append(card);
+  const colors = ['#24231f', '#719b87', '#cf973e', '#fffdf8'];
+  for (let i = 0; i < 28; i++) {
+    const confetti = document.createElement('span'); confetti.className = 'confetti';
+    confetti.style.setProperty('--x', `${4 + Math.random() * 92}vw`);
+    confetti.style.setProperty('--drift', `${(Math.random() - .5) * 160}px`);
+    confetti.style.setProperty('--spin', `${(Math.random() - .5) * 900}deg`);
+    confetti.style.setProperty('--delay', `${Math.random() * .3}s`);
+    confetti.style.background = colors[i % colors.length]; overlay.append(confetti);
+  }
+  document.body.append(overlay);
+  celebrationTimer = setTimeout(clearCelebration, 3400);
+}
 function persist() {
   try { localStorage.setItem('monochrome-progress', JSON.stringify({level: current, completed: [...completed]})); } catch {}
 }
@@ -89,6 +116,9 @@ function render() {
   });
   const solved = positions.every(Boolean) && matches(computeGrid(data, positions), data.target);
   if (solved) { completed.add(current); persist(); }
+  if (solved && !wasSolved) celebrate();
+  if (!solved && wasSolved) clearCelebration();
+  wasSolved = solved;
   $('status').textContent = solved ? 'Pattern matched. Beautiful! Choose the next level when you are ready.'
     : hint !== null ? `Hint: drag piece ${hint + 1} so its top-left corner matches the dashed cell.`
     : selected !== null ? `Piece ${selected + 1} selected. Use the keyboard to choose a canvas cell.` : 'Drag a piece onto the canvas to begin.';
@@ -166,7 +196,7 @@ function place(x, y) {
   positions[selected] = [x, y]; selected = null; hint = null; render();
 }
 function load(level) {
-  finishDrag(true); current = Math.max(0, Math.min(100, level)); data = LEVELS[current];
+  finishDrag(true); clearCelebration(); wasSolved = false; current = Math.max(0, Math.min(100, level)); data = LEVELS[current];
   positions = data.pieces.map(() => null); selected = null; hint = null; showSolution = false; persist(); render();
 }
 for (let i = 0; i <= 100; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; $('level').append(o); }
