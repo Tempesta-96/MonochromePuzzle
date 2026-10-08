@@ -107,8 +107,9 @@ function render() {
       if (e.button !== 0 || drag) return;
       const rect = shape.getBoundingClientRect();
       const [w, h] = bounds(cells);
-      let c = Math.max(0, Math.min(w - 1, Math.floor((e.clientX - rect.left) / 17)));
-      let r = Math.max(0, Math.min(h - 1, Math.floor((e.clientY - rect.top) / 17)));
+      const step = rect.width / w;
+      let c = Math.max(0, Math.min(w - 1, Math.floor((e.clientX - rect.left) / step)));
+      let r = Math.max(0, Math.min(h - 1, Math.floor((e.clientY - rect.top) / (rect.height / h))));
       if (!cells.some(([dr, dc]) => dr === r && dc === c)) [r, c] = cells[0];
       beginDrag(e, i, c, r, btn);
     };

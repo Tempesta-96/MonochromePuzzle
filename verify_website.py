@@ -6,7 +6,8 @@ def tray_grab(page, i):
     cells = page.evaluate(f'data.pieces[{i}]')
     r, c = cells[0]
     box = page.locator('#pieces button').nth(i).locator('.shape').bounding_box()
-    return box['x'] + c*17 + 8, box['y'] + r*17 + 8, c, r
+    w,h=page.evaluate(f'bounds(data.pieces[{i}])')
+    return box['x'] + (c+.5)*box['width']/w, box['y'] + (r+.5)*box['height']/h, c, r
 
 def destination(page, x, y, c, r):
     size = page.evaluate('data.grid_size')
@@ -81,7 +82,7 @@ with sync_playwright() as p:
     page.click('#solution');assert page.locator('#solution').get_attribute('aria-pressed')=='true'
     page.reload();assert '4 / 101' in page.locator('#progress').inner_text()
     assert not errors,errors
-    # Real touch input, including short-screen automatic scrolling.
+    # Real touch input with the entire mobile game visible together.
     context=browser.new_context(viewport={'width':390,'height':844},has_touch=True,is_mobile=True)
     mobile=context.new_page();mobile.on('pageerror',lambda e:errors.append(str(e)));mobile.goto(URL)
     mobile.locator('#pieces button').first.scroll_into_view_if_needed()
@@ -93,7 +94,7 @@ with sync_playwright() as p:
     touch('touchMove',190,35)
     before=mobile.evaluate('scrollY')
     mobile.wait_for_timeout(500)
-    assert mobile.evaluate('scrollY') < before
+    assert mobile.evaluate('scrollY') == 0
     x,y=mobile.evaluate('data.solution[0]')
     dx,dy=destination(mobile,x,y,c,r)
     touch('touchMove',dx,dy);touch('touchEnd')
@@ -105,6 +106,15 @@ with sync_playwright() as p:
     assert mobile.evaluate('positions[1]') is None
     assert mobile.locator('.drag-ghost').count()==0
     assert not errors,errors
+    for width,height in [(320,568),(360,640),(390,844),(430,932)]:
+        mobile.set_viewport_size({'width':width,'height':height})
+        for level in [1,50,100]:
+            mobile.select_option('#level',str(level))
+            boxes=mobile.locator('#target,#board,#pieces button').evaluate_all('(els)=>els.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}})')
+            assert all(b['top']>=0 and b['bottom']<=height and b['left']>=0 and b['right']<=width for b in boxes),(width,height,level,boxes)
+            assert mobile.evaluate('document.documentElement.scrollHeight<=innerHeight'),(width,height,level)
+    mobile.set_viewport_size({'width':390,'height':844})
+    mobile.select_option('#level','100')
     mobile.screenshot(path='website-preview.png',full_page=True)
     browser.close()
     print('PASS: success overlay, no repeat celebration, pass-through input, reduced motion, auto-dismiss, reset cleanup; 101 targets; four levels solved by dragging; live snap previews; direct board movement; invalid drop restore; outside return; Escape; hints; saved progress; real touch placement, cancellation, auto-scroll and mobile layout; no JS errors.')
